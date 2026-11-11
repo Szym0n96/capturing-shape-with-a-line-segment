@@ -1,0 +1,13 @@
+{
+  "name": "capturing-shape-with-a-line-segment",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Interactive point-set shape representation with sampled search and convex-hull-based numerical optimization",
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 8000 --bind 127.0.0.1",
+    "test": "node --test",
+    "benchmark": "node scripts/benchmark.js"
+  },
+  "engines": { "node": ">=18" }
+}

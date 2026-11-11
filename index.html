@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Explore point-set representation with short line segments: an interactive JavaScript demo comparing sampled search and convex-hull-based numerical optimization.">
+  <title>Capturing a Shape with a Line Segment</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="src/app.js"></script>
+</head>
+<body>
+  <header>
+    <div class="topline"><span>Computational geometry · JavaScript & SVG</span><span>Experimental · v0.1.0</span></div>
+    <h1>Capturing a Shape</h1>
+    <p class="subtitle">with a Line Segment</p>
+    <p>Find a short segment within distance <i>r</i> of every point. Edit the points and compare two numerical approaches.</p>
+  </header>
+
+  <main>
+    <div class="workspace">
+      <section class="drawing-panel" aria-labelledby="drawing-title">
+        <div class="panel-heading"><h2 id="drawing-title">Point set</h2><span id="point-count">0 points</span></div>
+        <svg id="drawing" viewBox="0 0 900 560" tabindex="0" role="group" aria-label="Editable point set" aria-describedby="editor-help">
+          <defs><pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="#e9edf0" stroke-width="1"/></pattern></defs>
+          <rect width="900" height="560" fill="url(#grid)"/>
+          <g id="scene"></g>
+        </svg>
+        <div class="drawing-footer">
+          <div class="legend"><span class="legend-segment">Segment & capsule</span><span class="legend-hull">Convex hull</span><span class="legend-active">Endpoint constraints</span></div>
+          <p id="editor-help">Click to add or select · drag to move · Shift-click or Delete to remove.<br>With the drawing focused: Enter adds a point, Tab selects the next point, arrows move it. Limit: 100 points.</p>
+        </div>
+      </section>
+
+      <aside aria-label="Experiment controls">
+        <section class="controls">
+          <h2>Experiment</h2>
+          <label for="example">Point set</label>
+          <select id="example"></select>
+          <div class="button-row"><button id="random" type="button">Random set</button><button id="clear" type="button">Clear</button></div>
+          <p class="small" id="dataset-note">Prepared example</p>
+          <label for="radius">Radius <i>r</i> <output id="radius-label" for="radius">62</output></label>
+          <input id="radius" type="range" min="1" max="200" step="1" value="62">
+          <div class="checks">
+            <label><input id="show-disks" type="checkbox" checked> Show disks</label>
+            <label><input id="show-hull" type="checkbox" checked> Show convex hull</label>
+          </div>
+          <details>
+            <summary>Search settings</summary>
+            <label for="angles">Sampled orientations</label>
+            <select id="angles"><option>90</option><option selected>180</option><option>360</option></select>
+            <label for="offsets">Offsets per orientation (grid)</label>
+            <select id="offsets"><option>9</option><option selected>25</option><option>51</option></select>
+            <p class="small">The improved method also tests the minimum-width direction. Its offset tolerance is 0.0001 drawing units.</p>
+          </details>
+        </section>
+        <section class="controls inspection">
+          <h2>Inspect an orientation</h2>
+          <label><input id="inspect" type="checkbox"> Use a fixed direction</label>
+          <label for="angle">Angle <output id="angle-label" for="angle">0°</output></label>
+          <input id="angle" type="range" min="0" max="179" step="1" value="0">
+          <button id="animate" type="button">Play rotation</button>
+          <p class="small">The offset is optimized for each direction. Angles run clockwise from the horizontal; the shaded strip shows feasible line positions.</p>
+        </section>
+      </aside>
+    </div>
+
+    <section class="results" aria-labelledby="results-title">
+      <div class="panel-heading"><h2 id="results-title">Results</h2><span class="small">Lengths in drawing units</span></div>
+      <p id="status" role="status" aria-live="polite">Loading the experiment…</p>
+      <div id="metrics" class="metrics"></div>
+      <div class="table-wrap">
+        <table>
+          <caption>Both methods use the same point set, radius and uniform angle grid. Select a row's method to display its result.</caption>
+          <thead><tr><th scope="col">Show / method</th><th scope="col">Length</th><th scope="col">Time (ms)</th><th scope="col">Disk–line tests</th></tr></thead>
+          <tbody>
+            <tr id="grid-row"><th scope="row"><label><input type="radio" name="method" value="grid"> Uniform grid</label></th><td>—</td><td>—</td><td>—</td></tr>
+            <tr id="optimized-row"><th scope="row"><label><input type="radio" name="method" value="optimized" checked> Hull + optimized offset</label></th><td>—</td><td>—</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">Global directions are sampled: a positive-length result is the best candidate found, not a certified global optimum. Times are single runs and may vary. Disk–line counts exclude hull construction, width computation and final validation.</p>
+    </section>
+
+    <section class="notes" aria-labelledby="method-title">
+      <h2 id="method-title">Method & current scope</h2>
+      <details open>
+        <summary>From disks to a segment</summary>
+        <p>Each point defines a disk of radius <i>r</i>. A valid segment must intersect every disk. At a fixed direction and offset, each disk intersects the line in an interval. The shortest segment meeting all intervals follows directly from their extreme endpoints; overlapping intervals give a zero-length segment.</p>
+        <p>The baseline samples directions and offsets. The improved method first keeps only convex-hull vertices, then uses golden-section search on the offset. This works because the required length is a convex function of the offset inside the feasible strip.</p>
+      </details>
+      <details>
+        <summary>Feasibility, precision & next steps</summary>
+        <p>A segment exists exactly when the convex hull's minimum width is at most 2<i>r</i>. Here, all hull-edge directions are checked in O(h²) time. A missed grid search alone is never reported as impossibility. A single point is recognized when the computed intervals overlap; a positive result does not rule out a zero-length solution between samples.</p>
+        <p>All calculations use floating-point numbers. The distance check allows 10⁻⁷ drawing units of error. The 10⁻⁴ offset tolerance bounds the final search interval, not the length error. The exact circular-arc construction, rotating-calipers event queue and collision-detection extension are left for later work.</p>
+      </details>
+      <p class="references">Based on van Beusekom et al., <a href="https://doi.org/10.57717/cgt.v4i1.74">Capturing the Shape of a Point Set With a Line Segment</a> (2025), §2 and §2.1, and their EuroCG 2024 extended abstract. See the <a href="docs/method.md">implementation notes</a> for the geometry, complexity and numerical limitations, and the <a href="README.md">README</a> to run the code and experiments.</p>
+    </section>
+  </main>
+  <footer>Szymon Januszewski · Capturing a Shape with a Line Segment</footer>
+  <noscript>This demonstration needs JavaScript enabled.</noscript>
+</body>
+</html>
