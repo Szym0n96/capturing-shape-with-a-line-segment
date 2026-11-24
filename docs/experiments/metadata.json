@@ -1,0 +1,34 @@
+{
+  "generated": "2026-11-23T15:52:08.235Z",
+  "node": "v18.19.1",
+  "os": "linux 6.18.58.1-microsoft-standard-WSL2 x64",
+  "cpu": "12th Gen Intel(R) Core(TM) i7-1255U",
+  "logical_cpus": 12,
+  "defaults": {
+    "angles": 180,
+    "offsets": 25,
+    "refinements": 6,
+    "offsetTolerance": 0.0001
+  },
+  "referenceOptions": {
+    "method": "events",
+    "angles": 4096,
+    "refinements": 12,
+    "offsetTolerance": 1e-7
+  },
+  "repetitions": 5,
+  "warmups": 1,
+  "timer": "performance.now; whole solve including preprocessing and verification",
+  "counts": "disk_tests counts disk-line interval tests only; excludes preprocessing and verification",
+  "seeds": "random quality: 1–5; scaling/ablation: 1–3; deterministic LCG in src/examples.js",
+  "reference_limit": "Dense numerical candidate; not an exact optimum. Signed differences can be negative.",
+  "records": {
+    "quality": 63,
+    "scaling": 60,
+    "hull-ablation": 30,
+    "width": 10,
+    "resolution": 45,
+    "offset-tolerance": 18,
+    "dense-grid": 3
+  }
+}

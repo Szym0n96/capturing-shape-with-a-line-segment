@@ -136,7 +136,7 @@ test('all prepared examples behave as labelled', () => {
     if (name === 'infeasible') assert.equal(result.status, 'infeasible');
     else {
       assert.equal(result.verification.valid, true);
-      assert.equal(result.status, name === 'cluster' ? 'point' : 'candidate');
+      assert.equal(result.status, ['cluster', 'pointBoundary'].includes(name) ? 'point' : 'candidate');
     }
   }
 });

@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Geometry, algorithms, validation and reproducible experiments for line-segment shape capture.">
+<title>Technical report · Capturing a Shape with a Line Segment</title><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="docs/report.css"></head>
+<body class="report"><nav aria-label="Report navigation"><a href="index.html">← Interactive demo</a><a href="docs/report.pdf">Download PDF</a><a href="docs/experiments/metadata.json">Experiment metadata</a><a href="docs/report.md">Report source</a></nav>
+<main><h1>Capturing a Shape with a Line Segment</h1>
+<p>Szymon Januszewski · Technical report · Version 1.0.0</p>
+<h2>1. Problem and scope</h2>
+<p>A capsule is the radius-r neighbourhood of a segment: a rectangle with two semicircular ends, or a disk when the segment has zero length. It provides a compact, directional bound for a point cloud. Given planar points P and a positive radius r, the problem is to find a shortest segment s satisfying:</p>
+<div class="equation"><img src="docs/figures/equation-01.svg" alt="\min_s |s| \quad \mathrm{subject\ to}\quad d(p,s)\leq r\quad (p\in P)."></div>
+<p>The equivalent disk formulation is particularly useful: s must intersect every radius-r disk centred at an input point. There are three possible outcomes: no segment exists, a single point suffices, or a positive-length segment is required. The journal article by van Beusekom et al. [1] develops an exact algorithm in O(n log h + h log³ h), where h is the hull size. Its earlier EuroCG version [2] gives O(n log h + h²).</p>
+<p>This implementation follows the geometric reductions in those papers, then uses numerical search. It implements a uniform reference grid, convex-hull reduction, a linear rotating-calipers width scan, numerical fixed-direction optimization, analytic support/feasibility events and local angular refinement. The full exact circular-arc sweep is studied below but is not implemented. There is no claimed global approximation ratio. The source, experiments and interactive explanations make these distinctions visible rather than hiding them behind a single result labelled optimal.</p>
+<p>The scope is small planar datasets in ordinary floating-point coordinates. The browser editor supports 100 points in a 900 × 560 drawing. Separate Node.js experiments reach 1,000 points. All lengths use the input coordinate units; positive angles appear clockwise in the SVG coordinate system.</p>
+<h2>2. Geometric reductions</h2>
+<h3>2.1 Why only hull vertices matter</h3>
+<p>The capsule is a Minkowski sum of a segment and a disk. Both are convex, so the capsule is convex. If all hull vertices lie inside it, every convex combination of those vertices also lies inside it. Thus it contains the whole convex hull and every original point. The converse is immediate because hull vertices are input points. This is the reduction in journal Lemma 1 [1].</p>
+<p>The implementation uses Andrew's monotone chain, sorts lexicographically, removes duplicates and keeps only the endpoints of collinear runs. Its cost is O(n log n); it does not use the output-sensitive O(n log h) hull algorithm assumed in the published bound. The original points remain available for independent verification.</p>
+<h3>2.2 Feasibility through minimum width</h3>
+<p>If a segment is feasible, its supporting line is within r of every point. Two parallel lines at distance r on either side enclose the input in a strip of width 2r. Conversely, the middle line of any such strip intersects every disk. Each intersection is a closed, bounded interval. A finite segment spanning the finitely many intervals meets them all. Therefore:</p>
+<div class="equation"><img src="docs/figures/equation-02.svg" alt="\mathrm{feasible}\quad\Longleftrightarrow\quad w(P)\leq 2r."></div>
+<p>A minimum-width strip of a convex polygon has a support parallel to an edge. For each oriented hull edge, the farthest vertex is its antipodal support. As the edge moves around the counterclockwise hull, this vertex only advances. The implementation evaluates cross-product area divided by edge length, retaining the narrowest strip and its direction. The pointer makes fewer than two circuits including initialization: O(h) total work. Empty, single-point and collinear hulls have zero width. A quadratic edge-by-vertex implementation is retained only as a test reference.</p>
+<h3>2.3 Zero length and a lower bound</h3>
+<p>Width feasibility is not a test for a point solution. Even diameter at most 2r is insufficient: an equilateral triangle of side 2r has circumradius 2r/√3, which exceeds r. A point solution exists exactly when the smallest enclosing-circle radius R is at most r.</p>
+<p>All three methods share a shuffled incremental enclosing-circle check on the hull. Boundary updates use one point, a diameter pair, or a circumcircle of three points. A fixed shuffle seed ensures repeatability. Its worst-case cost is O(h³), and no expected linear-time guarantee is claimed for this fixed shuffle. Small independent exhaustive circle tests validate the implementation. The circle is used numerically, with final containment checks, rather than as an exact-arithmetic predicate.</p>
+<p>A capsule around a segment of length L fits inside the disk centred at the segment midpoint with radius r + L/2. Thus the smallest enclosing-circle radius satisfies R ≤ r + L/2, giving:</p>
+<div class="equation"><img src="docs/figures/equation-03.svg" alt="L^*\geq\max(0,2(R-r))."></div>
+<p>This geometric lower bound can be weak, but it is independent of angular sampling. It is evaluated in floating point, so the displayed gap is not a formal interval-arithmetic certificate. For collinear extremes at distance D, it matches the exact answer max(0, D − 2r).</p>
+<h2>3. Solving a fixed direction</h2>
+<h3>3.1 Disks become intervals</h3>
+<p>Let u = (cos θ, sin θ), v = (−sin θ, cos θ), and write each input point as (xᵢ, yᵢ) in this basis. A line has equation t u + b v. It meets every disk exactly when its offset lies in the following feasible strip:</p>
+<div class="equation"><img src="docs/figures/equation-04.svg" alt="b\in[\max_i(y_i-r),\ \min_i(y_i+r)]."></div>
+<p>Within this strip, disk i intersects the line in an interval whose endpoints are:</p>
+<div class="equation"><img src="docs/figures/equation-05.svg" alt="\ell_i(b)=x_i-\sqrt{r^2-(y_i-b)^2},\qquad q_i(b)=x_i+\sqrt{r^2-(y_i-b)^2}."></div>
+<p>Define the extreme endpoints A and B. The shortest segment meeting all intervals has length:</p>
+<div class="equation"><img src="docs/figures/equation-06.svg" alt="A(b)=\max_i\ell_i(b),\quad B(b)=\min_i q_i(b),\quad L(b)=\max(0,A(b)-B(b))."></div>
+<p>If A &gt; B, the segment [B, A] is necessary and sufficient: a solution must start at or before the smallest right endpoint B and end at or after the largest left endpoint A. Every interval intersects [B, A]. If A ≤ B, all intervals contain [A, B], and its midpoint is a valid zero-length answer. Each line evaluation costs O(h), or O(n) when hull reduction is disabled.</p>
+<p>The interface displays these intervals with point labels. Gold marks the disks attaining the two extreme endpoints; additional disks can also be tight. At most 12 hull intervals are drawn, with the active constraints first. The solver still uses every constraint.</p>
+<h3>3.2 Convex numerical optimization</h3>
+<p>The left semicircle function ℓᵢ is convex on its domain; the right semicircle qᵢ is concave. Consequently A is convex, B is concave, and max(0, A − B) is convex on the feasible strip. Golden-section search can minimize it without differentiating at envelope corners or at flat minima.</p>
+<p>The routine explicitly evaluates both strip endpoints, then contracts a bracket until its width is at most τ = 10⁻⁴ units, with a defensive limit of 96 iterations. It returns the best evaluated candidate and the final bracket width and convergence flag. A strip of zero width is handled directly by the same routine. Numerical cost is O(h(K + 1)), where K is the iteration count, usually O(log(2r/τ)).</p>
+<p>The tolerance controls line position, not segment-length error. Near a tangency, a square-root derivative can be unbounded; therefore τ alone does not establish a uniform additive length guarantee. Angular sampling introduces another, separate approximation.</p>
+<h3>3.3 The exact O(h) construction in the paper</h3>
+<p>Journal §2.1 [1] constructs the relevant boundaries of the disk intersection envelopes on the feasible strip. Hull order is essential: circular arcs can be inserted in order while removing arcs that no longer contribute. A stack supports this process, with each arc inserted and removed at most once. Constructing the two boundaries therefore takes O(h), rather than testing every pair of circles.</p>
+<p>Where the two active arcs are smooth, the distance between their boundary points along the prescribed direction is minimized when their tangents have the same slope. At a vertex, one-sided slopes replace a single derivative: a minimum occurs when the slope difference changes sign across the corner. Strip endpoints must also be considered. The ordered envelopes let the algorithm locate the appropriate arcs or vertices in linear total time. Lemmas 2–4 justify this fixed-direction construction.</p>
+<p>The numerical routine implements the same convex objective but recomputes all intervals at each offset. It does not construct or maintain those arc stacks, and its extra logarithmic tolerance factor must not be confused with the exact O(h) bound.</p>
+<h2>4. Rotating the direction</h2>
+<h3>4.1 What the exact sweep maintains</h3>
+<p>In journal §2.2, the two feasible-strip boundaries, the relevant circular-arc envelopes and the contact points of the shortest segment change as θ rotates. Between events, the combinatorial configuration is fixed, allowing the next event to be computed from the current arcs and supporting disks. The event categories below use the journal numbering; earlier versions differ.</p>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Change tracked by the exact algorithm</th>
+<th>Bound / processing</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1a</td>
+<td>Optimal segment reaches or leaves a strip boundary</td>
+<td>O(h) events; O(1) each</td>
+</tr>
+<tr>
+<td>1b</td>
+<td>Segment endpoint reaches or leaves an envelope vertex</td>
+<td>O(h) events; O(1) each</td>
+</tr>
+<tr>
+<td>2a</td>
+<td>A strip boundary tangent to an envelope passes an envelope vertex</td>
+<td>O(h) events; O(log² h) each</td>
+</tr>
+<tr>
+<td>2b</td>
+<td>A non-tangent strip boundary passes a prospective envelope vertex</td>
+<td>O(h log h) including internal events; O(log² h) each</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Strip boundaries coincide, changing feasibility</td>
+<td>O(h) events; O(log² h) each</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Supporting disk changes at a direction parallel to a hull edge</td>
+<td>O(h) events; O(log² h) each</td>
+</tr>
+</tbody>
+</table>
+<p>Simultaneous events are handled in descending type order, 4, 3, 2, then 1. This avoids using an obsolete support configuration when a lower-type event is processed. The difficult part is anticipating envelope changes, including vertices not currently exposed on the active strip.</p>
+<p>The journal data structure uses a balanced binary tree over the cyclic hull order. Each node stores the boundary of the intersection of disks belonging to its subtree. A contiguous range of hull vertices is decomposed into O(log h) canonical subtrees. Suitable circular-ray or line intersection queries on their stored boundaries take O(log² h) in total. These queries expose the next relevant intersection without reconstructing a full envelope after every event.</p>
+<p>The dominant type-2b family contributes O(h log h) events at O(log² h) each; the other types fit within this bound. Including the output-sensitive hull construction yields O(n log h + h log³ h), journal Theorem 5. The O(h²) sweep term in the shorter EuroCG article is an earlier result, not the bound of the final journal data structure. This implementation includes neither that tree nor the full type-1/type-2 event scheduler.</p>
+<h3>4.2 Implemented support and feasibility events</h3>
+<p>Support changes occur at hull-edge directions modulo π. Sorting these directions partitions [0, π] into sectors. Inside a sector the minimum and maximum projections onto v are attained by fixed vertices. Their indices advance monotonically across sectors. If their displacement is (dx, dy), the width is:</p>
+<div class="equation"><img src="docs/figures/equation-07.svg" alt="w(\theta)=dy\cos\theta-dx\sin\theta."></div>
+<p>The code solves w(θ) = 2r analytically within each sector using a phase shift and arccosine. Roots are clipped to the sector, merged with equal-angle support events, and used to construct closed feasible angular intervals. A singleton interval is retained when only the tangent orientation is feasible. Sorting costs O(h log h); the subsequent support traversal and root enumeration take O(h).</p>
+<p>These are events of types 3 and 4 in the journal's terminology, not the complete set needed for exact optimization. They ensure that each detected feasible angular component contributes candidates even when it is narrower than a uniform sample gap. They do not identify every local extremum of optimal segment length.</p>
+<h3>4.3 Three implemented searches</h3>
+<p>The baseline tests A uniformly spaced angles and B uniformly spaced offsets per feasible strip, using all original points. The second method uses hull vertices, numerical offset minimization and the same angle grid plus the minimum-width direction. That extra direction is a feasibility witness; it prevents a complete angular miss when the width test succeeds, subject to numerical checks.</p>
+<p>The third method starts with every candidate direction of the second. It adds support events, feasibility events, and the endpoints and midpoint of each feasible component. At each refinement round, the four shortest sampled candidates are selected; midpoints between each candidate and its angular neighbours are evaluated, with wraparound modulo π. Existing candidates are retained. This improves or preserves the incumbent but can miss a better basin elsewhere.</p>
+<pre><code class="language-text">hull, width := preprocess(points)
+if width &gt; 2r: return infeasible
+if enclosing circle fits in radius r: return point
+evaluate uniform directions and minimum-width direction
+evaluate support events, width roots and feasible-component midpoints
+repeat R rounds:
+    take the four shortest feasible sampled candidates
+    evaluate midpoint directions to their neighbours
+verify the best segment against every original point
+</code></pre>
+<p>Let C(h) be the enclosing-circle cost, K the numerical offset iteration count, and M the total number of directions. M is O(A + h + R), because each round adds at most eight directions. The implementations have these upper bounds, including final verification:</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Time bound</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Uniform grid</td>
+<td>O(n log n + C(h) + ABn)</td>
+</tr>
+<tr>
+<td>Hull + optimized offset</td>
+<td>O(n log n + C(h) + (A + 1)h(K + 1))</td>
+</tr>
+<tr>
+<td>Events + local refinement</td>
+<td>O(n log n + C(h) + h log h + Mh(K + 1) + RM log M)</td>
+</tr>
+</tbody>
+</table>
+<p>The last term includes sorting the sampled directions and promising candidates each round in this straightforward implementation. Auxiliary memory is O(n + M). C(h) has worst case O(h³) here. These are actual implementation bounds, not the article's complexity. A scan count in the UI counts disk–line tests only; it excludes hull construction, the circle, events, width computation and final distance verification.</p>
+<h2>5. Validation and numerical limits</h2>
+<p>Every returned global candidate is independently checked against every original point. The distance routine clamps the orthogonal projection parameter to [0, 1] and measures distance to the resulting segment point; it does not reuse disk-intersection formulas. A failed check hides the candidate and reports a numerical failure. Fixed-direction candidates displayed in the browser receive the same check.</p>
+<p>The 27 automated tests cover analytic lengths, empty/single/collinear/duplicate inputs, tangent strips, infeasible data, rotation and translation, random instances, JSON validation and capsule–disk overlap. The calipers scan is compared with the quadratic width scan on 80 seeded hulls and a regular 1,000-gon. The circle is compared with exhaustive one-, two- and three-point candidate circles on 100 small seeded sets. Event intervals are checked against direct projection at 36,000 sampled angles, including separate seam and isolated-tangency tests. Monotone improvement with refinement, hull ablation and a deliberately missed uniform grid are also tested.</p>
+<p>These tests are evidence, not exact-predicate guarantees. Coordinates use JavaScript double precision, and the hull uses an ordinary cross product. Extremely large magnitudes, extreme aspect ratios or nearly collinear triples can cause cancellation. The distance/width tolerance is ε = 10⁻⁷ units. Tiny negative radicands caused by accepted roundoff are clamped to zero. Circle containment uses a scale-aware machine-precision allowance, followed by the common final distance check. Event angles within 10⁻¹² radians are merged. These tolerances can change decisions inside their uncertainty band.</p>
+<p>The examples include an equilateral triangle demonstrating that diameter ≤ 2r does not imply a point solution, and another triangle exactly on a radius-r circle. Width-boundary experiments use perturbations of ±10⁻⁴, larger than the acceptance tolerance. Floating-point feasibility and the enclosing-circle lower bound should therefore be read at the stated precision, not as symbolic proofs.</p>
+<h2>6. Reproducible experiments</h2>
+<h3>6.1 Protocol</h3>
+<p>Recorded on 2026-11-23 with Node.js v18.19.1, linux 6.18.58.1-microsoft-standard-WSL2 x64, on a 12th Gen Intel(R) Core(TM) i7-1255U (12 logical CPUs).</p>
+<p>Each timed measurement is the median of five complete solver calls after one warm-up. Timings include preprocessing and verification. They are measurements on one machine without isolation from other processes; sub-millisecond differences are especially noisy. The operation counts are deterministic for the recorded inputs. Random data uses the LCG in the shared examples module, with seeds 1–5 for quality and 1–3 for scaling and ablation.</p>
+<p>The default settings are A = 180, B = 25, six refinement rounds and τ = 10⁻⁴. Quality is compared with a denser event-assisted numerical search at 4,096 angles, 12 rounds and τ = 10⁻⁷. This reference is another feasible candidate, not an exact oracle. Signed differences can be negative because the grids and numerical stopping paths differ. An additional independent offset grid uses 1,440 angles × 401 offsets on three small cases. It avoids golden-section minimization but still samples directions.</p>
+<p>The recorded suite has 63 quality rows on 21 instances, 60 scaling rows, 30 hull-ablation rows, 10 width-scan rows, 45 angular-resolution rows, 18 offset-tolerance rows and three dense-grid comparisons. The quality inputs are stored in JSON; all rows and environment metadata are included in docs/experiments. The browser limit does not apply to the Node.js benchmark.</p>
+<h3>6.2 Candidate quality</h3>
+<table>
+<thead>
+<tr>
+<th>Instance</th>
+<th>Grid length</th>
+<th>Hull length</th>
+<th>Events length</th>
+<th>Dense reference</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>elongated</td>
+<td>425.415358</td>
+<td>425.415315</td>
+<td>425.408773</td>
+<td>425.408773</td>
+</tr>
+<tr>
+<td>collinear</td>
+<td>430</td>
+<td>430</td>
+<td>430</td>
+<td>430</td>
+</tr>
+<tr>
+<td>narrow</td>
+<td>sample-miss</td>
+<td>518.868452</td>
+<td>518.868452</td>
+<td>518.868453</td>
+</tr>
+<tr>
+<td>triangle</td>
+<td>63.749992</td>
+<td>63.749992</td>
+<td>63.749992</td>
+<td>63.749992</td>
+</tr>
+<tr>
+<td>pointBoundary</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr>
+<td>random-100-seed1</td>
+<td>481.276533</td>
+<td>481.257114</td>
+<td>481.215972</td>
+<td>481.215884</td>
+</tr>
+<tr>
+<td>random-100-seed5</td>
+<td>468.634375</td>
+<td>468.445867</td>
+<td>468.164673</td>
+<td>468.149055</td>
+</tr>
+</tbody>
+</table>
+<p>Across the 21 quality instances, the largest positive length differences to the dense reference are 0.517118 units for the grid, 0.296812 for hull + offset, and 0.015618 for events + refinement. These are observed differences on this dataset, not upper bounds on true optimality gaps. The event method still leaves a visible gap on random-100-seed5, illustrating the limits of six local refinement rounds. Small negative differences also occur, including on the narrow case; they reflect the numerical nature of the reference.</p>
+<p>The narrow rotated rectangle is particularly instructive. Its width is 32 and r = 16.01; the feasible angular component is much narrower than a one-degree grid spacing. The baseline reports a sample miss. Both improved methods use the minimum-width witness, and the event method additionally identifies the narrow component's boundaries. This demonstrates why a failed grid must not be labelled infeasible.</p>
+<p><img src="docs/figures/resolution.svg" alt="Candidate length minus the dense numerical reference as the uniform angle count increases. The vertical scales differ between panels." /></p>
+<p>The collinear instance has exact length 520 − 2 × 45 = 430 and is recovered to roundoff. The point-threshold instance returns zero independently of the angle grid. Positive-length candidates generally improve with finer sampling, but different uniform grids are not nested, so arbitrary increases in A need not produce monotone improvements. Refinement of a fixed initial grid is monotone because candidates are retained.</p>
+<h3>6.3 Cost and ablation</h3>
+<p><img src="docs/figures/scaling.svg" alt="Scaling on elongated random data. Each plotted value is a median across three seeds; each runtime for one seed is itself a median of five runs." /></p>
+<p>At n = 1,000 on elongated random sets, the hull has 17–19 vertices. Median disk–line counts fall from 240,000 to 4,522 when the same optimized-offset solver switches from all points to hull vertices. The corresponding median runtimes across three seeds are 5.364 ms and 0.826 ms. Hull construction and common preprocessing are included in both.</p>
+<p>This ablation uses identical angle choices, offset tolerance and point detection, changing only whether the fixed-direction solver scans the hull or all points. It therefore isolates hull reduction more clearly than comparing the full grid and event methods. For regular polygons all input points are hull vertices, so this advantage disappears. These cases are also close to the enclosing-circle threshold and have many narrow feasible angular components; they should not be interpreted as generic random-data scaling.</p>
+<p>The event method usually performs more work than the simple hull method because it evaluates additional directions. Its purpose is better angular coverage and candidate quality, not a universal speed-up. On small hulls, numerical offset optimization can also use more interval evaluations than a grid with only 25 offsets.</p>
+<p><img src="docs/figures/width.svg" alt="Width computation on regular polygons. The left panel counts area/projection evaluations; the right panel shows measured time." /></p>
+<p>On the regular 1,000-gon, the calipers scan performs 5,996 area evaluations and 1,498 pointer advances, versus 1,000,000 projection evaluations for the quadratic reference. The measured times are 0.059 ms and 2.565 ms respectively. Both return width 399.998026081 to roundoff. The counted primitives differ, so their ratio is not a direct machine-instruction ratio; their growth still exposes the linear versus quadratic scans.</p>
+<h3>6.4 Precision checks and reference limits</h3>
+<p>The largest recorded constraint excess in the quality suite is 1.85e-13 units, well below the 10⁻⁷ allowance. At τ = 10⁻⁴, the three fixed-direction tolerance cases differ from a τ = 10⁻¹⁰ reference by at most 2.84e-12 length units. This empirical agreement is not a general length-error guarantee. The dense 1,440 × 401 grid is longer than the default event result by 0.000253712 units on elongated, 0.000310601 on random-30-seed1, and 0 on triangle.</p>
+<p>The dense-grid comparison and independent point-to-segment validation address different failure modes: the former checks search quality against another sampling strategy, while the latter checks whether the returned geometry satisfies the constraints. Neither alone proves global optimality. The denser reference shares primitives with the event solver, so the analytic cases, exhaustive circle oracle and separate width scan remain necessary complementary checks.</p>
+<h2>7. Interactive demonstration and use</h2>
+<p>The page lets the reader add, drag, delete and label points, adjust the radius, and compare the three candidate capsules. Keyboard controls permit point selection and movement. Import/export of versioned JSON preserves coordinates, radius and search settings. SVG export saves the current drawing. All processing stays in the browser; there is no backend or external runtime dependency.</p>
+<p>For a fixed angle, the page shows the feasible strip, allows manual line placement, and plots the convex length function. The orientation plot shows evaluated candidates, feasible angular components and the implemented support/feasibility events. Its connecting lines are visual interpolation, not evaluations between samples. The rotation animation retains the shortest segment encountered in blue; it is a visualization at one-degree increments, separate from the global method results in the comparison table.</p>
+<p>The optional collision panel tests a probe disk of radius ρ against the capsule. Overlap occurs when the probe centre is at distance at most r + ρ from the representative segment. Separation certifies separation from the contained point set; overlap is only a conservative broad-phase indication and can be a false positive for the original geometry. Zero-length segments reduce naturally to disk–disk overlap.</p>
+<p>To reproduce the work, serve the repository root with Python's HTTP server and open index.html. Node.js 18 or newer runs the tests and experiments without installing packages. Figure and report regeneration use optional Python plotting/Markdown packages and pdfLaTeX; the generated HTML, SVG and PDF are already included for readers who only want to run the demo. The README gives the exact commands and source-archive instructions.</p>
+<h2>8. Conclusions and further work</h2>
+<p>The geometric reductions produce a small, inspectable solver: feasibility is separated from search failure, hull constraints replace redundant interior points, and fixed-direction minimization follows from convexity. Selected analytic events resolve an important weakness of uniform sampling by exposing narrow feasible angular components. The experiments show the cost of extra angular exploration alongside improvements in candidate quality, rather than treating all optimizations as automatic speed-ups.</p>
+<p>The main remaining algorithmic step is the exact circular-arc sweep, including type-1/type-2 events and the journal's range-query data structure. A separate numerical improvement would be adaptive refinement with certified interval bounds, rather than selecting only four promising samples. Robust orientation predicates and certified circle/angle computations would be needed for guarantees outside the current floating-point scope. These extensions are deliberately distinguished from the working numerical implementation.</p>
+<h2>References</h2>
+<ol>
+<li>
+<p>N. van Beusekom, M. van Kreveld, M. van Mulken, M. Roeloffzen, B. Speckmann and J. Wulms. <strong>Capturing the Shape of a Point Set With a Line Segment.</strong> Computing in Geometry and Topology, 4(1), Article 10, pp. 10:1–10:35, 2025. <a href="https://doi.org/10.57717/cgt.v4i1.74">doi:10.57717/cgt.v4i1.74</a>. Sections 2–2.2 and Theorem 5 are the basis for the exact-algorithm discussion.</p>
+</li>
+<li>
+<p>The same authors. <strong>Capturing the Shape of a Point Set with a Line Segment.</strong> EuroCG 2024 extended abstract, pp. 38:1–38:8. The supplied eight-page version gives the earlier quadratic sweep bound. <a href="https://arxiv.org/abs/2402.12285">Related full version on arXiv</a>.</p>
+</li>
+</ol>
+</main><footer>Szymon Januszewski · Capturing a Shape with a Line Segment</footer></body></html>

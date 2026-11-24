@@ -10,14 +10,16 @@
 </head>
 <body>
   <header>
-    <div class="topline"><span>Computational geometry · JavaScript & SVG</span><span>Experimental · v0.1.0</span></div>
+    <div class="topline"><span>Computational geometry · JavaScript & SVG</span><span>v1.0.0</span></div>
     <h1>Capturing a Shape</h1>
     <p class="subtitle">with a Line Segment</p>
-    <p>Find a short segment within distance <i>r</i> of every point. Edit the points and compare two numerical approaches.</p>
+    <p>Find a short segment within distance <i>r</i> of every point. Edit the points, compare three searches and explore the underlying geometry.</p>
+    <nav aria-label="Project resources"><a href="report.html">Read the report</a><a href="docs/report.pdf">Download PDF</a><a href="README.md">Run the code</a></nav>
   </header>
 
   <main>
     <div class="workspace">
+      <div class="main-column">
       <section class="drawing-panel" aria-labelledby="drawing-title">
         <div class="panel-heading"><h2 id="drawing-title">Point set</h2><span id="point-count">0 points</span></div>
         <svg id="drawing" viewBox="0 0 900 560" tabindex="0" role="group" aria-label="Editable point set" aria-describedby="editor-help">
@@ -31,6 +33,26 @@
         </div>
       </section>
 
+    <section class="results" aria-labelledby="results-title">
+      <div class="panel-heading"><h2 id="results-title">Results</h2><span class="small">Lengths in drawing units</span></div>
+      <p id="status" role="status" aria-live="polite">Loading the experiment…</p>
+      <div id="metrics" class="metrics"></div>
+      <div class="table-wrap">
+        <table>
+          <caption>The three methods share the same input and initial angle grid. Select a method to display its result. All include a common enclosing-circle check for point solutions.</caption>
+          <thead><tr><th scope="col">Show / method</th><th scope="col">Length</th><th scope="col">Time (ms)</th><th scope="col">Disk–line tests</th><th scope="col">Result</th></tr></thead>
+          <tbody>
+            <tr id="grid-row"><th scope="row"><label><input type="radio" name="method" value="grid"> Uniform grid</label></th><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+            <tr id="optimized-row"><th scope="row"><label><input type="radio" name="method" value="optimized"> Hull + optimized offset</label></th><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+            <tr id="events-row"><th scope="row"><label><input type="radio" name="method" value="events" checked> Events + local refinement</label></th><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">Global directions are sampled: a positive-length result is the best candidate found, not a certified global optimum. Times are single runs and may vary. Disk–line counts exclude preprocessing and final validation.</p>
+      <button id="export-svg" type="button">Save drawing as SVG</button>
+    </section>
+
+      </div>
       <aside aria-label="Experiment controls">
         <section class="controls">
           <h2>Experiment</h2>
@@ -38,18 +60,24 @@
           <select id="example"></select>
           <div class="button-row"><button id="random" type="button">Random set</button><button id="clear" type="button">Clear</button></div>
           <p class="small" id="dataset-note">Prepared example</p>
+          <div class="button-row"><button id="import" type="button">Import JSON</button><button id="export" type="button">Export JSON</button></div>
+          <input id="dataset-file" type="file" accept=".json,application/json" hidden>
+          <p class="small" id="file-status" role="status"></p>
           <label for="radius">Radius <i>r</i> <output id="radius-label" for="radius">62</output></label>
-          <input id="radius" type="range" min="1" max="200" step="1" value="62">
+          <input id="radius" type="range" min="1" max="200" step="any" value="62">
           <div class="checks">
             <label><input id="show-disks" type="checkbox" checked> Show disks</label>
             <label><input id="show-hull" type="checkbox" checked> Show convex hull</label>
+            <label><input id="show-labels" type="checkbox" checked> Label points</label>
           </div>
           <details>
             <summary>Search settings</summary>
             <label for="angles">Sampled orientations</label>
-            <select id="angles"><option>90</option><option selected>180</option><option>360</option></select>
+            <select id="angles"><option>36</option><option>90</option><option selected>180</option><option>360</option><option>720</option></select>
             <label for="offsets">Offsets per orientation (grid)</label>
             <select id="offsets"><option>9</option><option selected>25</option><option>51</option></select>
+            <label for="refinements">Event-search refinement rounds</label>
+            <select id="refinements"><option>0</option><option>3</option><option selected>6</option><option>10</option></select>
             <p class="small">The improved method also tests the minimum-width direction. Its offset tolerance is 0.0001 drawing units.</p>
           </details>
         </section>
@@ -57,41 +85,52 @@
           <h2>Inspect an orientation</h2>
           <label><input id="inspect" type="checkbox"> Use a fixed direction</label>
           <label for="angle">Angle <output id="angle-label" for="angle">0°</output></label>
-          <input id="angle" type="range" min="0" max="179" step="1" value="0">
+          <input id="angle" type="range" min="0" max="180" step="any" value="0">
           <button id="animate" type="button">Play rotation</button>
-          <p class="small">The offset is optimized for each direction. Angles run clockwise from the horizontal; the shaded strip shows feasible line positions.</p>
+          <label for="event-select">Geometric events</label>
+          <select id="event-select"><option value="">Jump to an event</option></select>
+          <label for="offset">Line position within the feasible strip</label>
+          <input id="offset" type="range" min="0" max="1000" step="1" value="500">
+          <button id="optimize-offset" type="button">Optimize line position</button>
+          <p class="small" id="offset-note">Line position is optimized automatically.</p>
+          <p class="small">Angles run clockwise from the horizontal; the shaded strip shows feasible line positions.</p>
         </section>
       </aside>
     </div>
 
-    <section class="results" aria-labelledby="results-title">
-      <div class="panel-heading"><h2 id="results-title">Results</h2><span class="small">Lengths in drawing units</span></div>
-      <p id="status" role="status" aria-live="polite">Loading the experiment…</p>
-      <div id="metrics" class="metrics"></div>
-      <div class="table-wrap">
-        <table>
-          <caption>Both methods use the same point set, radius and uniform angle grid. Select a row's method to display its result.</caption>
-          <thead><tr><th scope="col">Show / method</th><th scope="col">Length</th><th scope="col">Time (ms)</th><th scope="col">Disk–line tests</th></tr></thead>
-          <tbody>
-            <tr id="grid-row"><th scope="row"><label><input type="radio" name="method" value="grid"> Uniform grid</label></th><td>—</td><td>—</td><td>—</td></tr>
-            <tr id="optimized-row"><th scope="row"><label><input type="radio" name="method" value="optimized" checked> Hull + optimized offset</label></th><td>—</td><td>—</td><td>—</td></tr>
-          </tbody>
-        </table>
+    <section class="exploration" aria-labelledby="exploration-title">
+      <h2 id="exploration-title">Explore the geometry</h2>
+      <p>Follow the reduction from points to a strip, then to intervals on one line. Use the angle and line-position sliders to inspect each step.</p>
+      <div class="button-row walkthrough"><button id="step-hull" type="button">Show the hull</button><button id="step-strip" type="button">Inspect the best direction</button><button id="step-intervals" type="button">Inspect disk intervals</button></div>
+      <div class="analysis-grid">
+        <article><h3>Length across orientations</h3><svg id="orientation-chart" viewBox="0 0 560 230" role="img" aria-label="Sampled segment lengths and geometric event orientations"></svg><p class="small">Dots are evaluated candidates. Shaded regions are feasible orientations. Grey lines mark support changes; orange lines mark width = 2r. Click the chart to inspect a direction.</p></article>
+        <article><h3>Length across line positions</h3><svg id="offset-chart" viewBox="0 0 560 230" role="img" aria-label="Segment length as a function of line offset"></svg><p class="small" id="fixed-description"></p></article>
       </div>
-      <p class="small">Global directions are sampled: a positive-length result is the best candidate found, not a certified global optimum. Times are single runs and may vary. Disk–line counts exclude hull construction, width computation and final validation.</p>
+      <article id="interval-panel"><h3>Disk intersections on the displayed line</h3><div class="chart-scroll" tabindex="0" aria-label="Disk interval chart; scroll horizontally on small screens"><svg id="interval-chart" viewBox="0 0 900 260" role="img" aria-label="Intervals cut by the disks and the shortest segment meeting them"></svg></div><p class="small" id="interval-description"></p></article>
     </section>
+
+    <details class="collision-panel" id="collision-panel">
+      <summary>Application: capsule–disk collision</summary>
+      <p>Move a probe disk around the displayed capsule. An overlap is detected when the probe centre is at most r + ρ from the segment. A capsule is a conservative bound: an overlap does not necessarily mean a collision with the original point set.</p>
+      <div class="analysis-grid"><svg id="collision-chart" viewBox="0 0 900 560" role="img" aria-label="A disk tested against the representative capsule"></svg><div>
+        <label for="probe-x">Probe x</label><input id="probe-x" type="range" min="0" max="900" value="450">
+        <label for="probe-y">Probe y</label><input id="probe-y" type="range" min="0" max="560" value="280">
+        <label for="probe-radius">Probe radius ρ</label><input id="probe-radius" type="range" min="1" max="100" value="25">
+        <p id="collision-status" role="status"></p>
+      </div></div>
+    </details>
 
     <section class="notes" aria-labelledby="method-title">
       <h2 id="method-title">Method & current scope</h2>
       <details open>
         <summary>From disks to a segment</summary>
         <p>Each point defines a disk of radius <i>r</i>. A valid segment must intersect every disk. At a fixed direction and offset, each disk intersects the line in an interval. The shortest segment meeting all intervals follows directly from their extreme endpoints; overlapping intervals give a zero-length segment.</p>
-        <p>The baseline samples directions and offsets. The improved method first keeps only convex-hull vertices, then uses golden-section search on the offset. This works because the required length is a convex function of the offset inside the feasible strip.</p>
+        <p>The baseline samples directions and offsets. Hull reduction and golden-section search improve the line placement. The third method also evaluates support changes and feasibility boundaries, then refines promising angles. A shared smallest-enclosing-circle check detects zero-length solutions independently of the angular samples.</p>
       </details>
       <details>
         <summary>Feasibility, precision & next steps</summary>
-        <p>A segment exists exactly when the convex hull's minimum width is at most 2<i>r</i>. Here, all hull-edge directions are checked in O(h²) time. A missed grid search alone is never reported as impossibility. A single point is recognized when the computed intervals overlap; a positive result does not rule out a zero-length solution between samples.</p>
-        <p>All calculations use floating-point numbers. The distance check allows 10⁻⁷ drawing units of error. The 10⁻⁴ offset tolerance bounds the final search interval, not the length error. The exact circular-arc construction, rotating-calipers event queue and collision-detection extension are left for later work.</p>
+        <p>A segment exists exactly when the convex hull's minimum width is at most 2<i>r</i>. A rotating-calipers scan computes this width in O(h) time after the hull. A missed grid search alone is never reported as impossibility. If R is the smallest enclosing-circle radius, max(0, 2(R − r)) gives a geometric lower bound on the optimal segment length.</p>
+        <p>All calculations use floating-point numbers. The distance check allows 10⁻⁷ drawing units of error. The 10⁻⁴ offset tolerance bounds the final search interval, not the length error. Support and feasibility events are computed analytically; angular refinement is numerical. The report discusses the complete exact circular-arc event algorithm, which is not implemented here.</p>
       </details>
       <p class="references">Based on van Beusekom et al., <a href="https://doi.org/10.57717/cgt.v4i1.74">Capturing the Shape of a Point Set With a Line Segment</a> (2025), §2 and §2.1, and their EuroCG 2024 extended abstract. See the <a href="docs/method.md">implementation notes</a> for the geometry, complexity and numerical limitations, and the <a href="README.md">README</a> to run the code and experiments.</p>
     </section>

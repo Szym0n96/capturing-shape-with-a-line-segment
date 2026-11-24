@@ -8,7 +8,7 @@ const instances = [
 ];
 console.log('instance,n,h,radius,method,angles,offsets,status,length,max_distance,median_ms,disk_tests');
 for (const instance of instances) {
-  for (const method of ['grid', 'optimized']) {
+  for (const method of ['grid', 'optimized', 'events']) {
     // One warm-up, then five timed runs. Time includes preprocessing/validation.
     solve(instance.points, instance.radius, { method });
     const runs = Array.from({ length: 5 }, () => solve(instance.points, instance.radius, { method }));

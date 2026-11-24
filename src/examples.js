@@ -17,6 +17,14 @@ export const examples = {
   tangent: { label: 'Boundary case: width = 2r', radius: 60, points: points([
     [220, 220], [680, 220], [680, 340], [220, 340],
   ]) },
+  narrow: { label: 'Narrow feasible directions', radius: 16.01, points: points([
+    [-260, -16], [260, -16], [260, 16], [-260, 16],
+  ]).map(p => ({ x: 450 + p.x * Math.cos(.347) - p.y * Math.sin(.347),
+    y: 280 + p.x * Math.sin(.347) + p.y * Math.cos(.347) })) },
+  triangle: { label: 'Diameter ≤ 2r, but no point solution', radius: 100,
+    points: points([[350, 340], [550, 340], [450, 340 - 100 * Math.sqrt(3)]]) },
+  pointBoundary: { label: 'A point solution at the exact threshold', radius: 100,
+    points: [0, 2 * Math.PI / 3, 4 * Math.PI / 3].map(a => ({ x: 450 + 100 * Math.cos(a), y: 280 + 100 * Math.sin(a) })) },
 };
 
 // Deterministic instances shared by the demo and the benchmark.

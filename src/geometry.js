@@ -5,7 +5,7 @@ export function checkInput(points, radius) {
   if (!Number.isFinite(radius) || radius <= 0) {
     throw new RangeError('The radius must be positive and finite.');
   }
-  if (!Array.isArray(points) || points.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y))) {
+  if (!Array.isArray(points) || points.some(p => !p || !Number.isFinite(p.x) || !Number.isFinite(p.y))) {
     throw new TypeError('Points must have finite x and y coordinates.');
   }
 }
@@ -42,9 +42,8 @@ export function unproject(x, y, angle) {
   return { x: x * c - y * s, y: x * s + y * c };
 }
 
-// A minimum-width strip has a supporting line parallel to a hull edge.
-// Deliberately simple O(h²) scan; this is not rotating calipers.
-export function minimumWidth(hull) {
+// Reference implementation retained to validate the rotating-calipers scan.
+export function minimumWidthBrute(hull) {
   if (hull.length < 2) return { width: 0, angle: 0 };
   let best = { width: Infinity, angle: 0 };
   for (let i = 0; i < hull.length; i++) {
@@ -61,6 +60,23 @@ export function minimumWidth(hull) {
   return best;
 }
 
+// The antipodal vertex only advances around the CCW hull: O(h) total work.
+export function minimumWidth(hull) {
+  if (hull.length < 2) return { width: 0, angle: 0, advances: 0, tests: 0 };
+  let opposite = 1, advances = 0, tests = 0;
+  let best = { width: Infinity, angle: 0 };
+  for (let i = 0; i < hull.length; i++) {
+    const a = hull[i], b = hull[(i + 1) % hull.length];
+    const area = index => { tests++; return cross(a, b, hull[index % hull.length]); };
+    while (area(opposite + 1) > area(opposite)) { opposite++; advances++; }
+    const width = Math.max(0, area(opposite)) / Math.hypot(b.x - a.x, b.y - a.y);
+    if (width < best.width) best = { width,
+      angle: normalizeAngle(Math.atan2(b.y - a.y, b.x - a.x)),
+      edge: i, opposite: opposite % hull.length };
+  }
+  return { ...best, advances, tests };
+}
+
 // Independent of the disk/line intersection computation in solver.js.
 export function pointSegmentDistance(p, a, b) {
   const dx = b.x - a.x, dy = b.y - a.y;
@@ -71,7 +87,12 @@ export function pointSegmentDistance(p, a, b) {
 }
 
 export function verifySegment(points, segment, radius) {
-  const maxDistance = Math.max(0, ...points.map(p => pointSegmentDistance(p, segment.a, segment.b)));
+  let maxDistance = 0;
+  for (const p of points) maxDistance = Math.max(maxDistance, pointSegmentDistance(p, segment.a, segment.b));
   return { valid: maxDistance <= radius + EPSILON, maxDistance,
     excess: Math.max(0, maxDistance - radius) };
+}
+
+export function capsuleIntersectsDisk(segment, capsuleRadius, center, diskRadius) {
+  return pointSegmentDistance(center, segment.a, segment.b) <= capsuleRadius + diskRadius + EPSILON;
 }

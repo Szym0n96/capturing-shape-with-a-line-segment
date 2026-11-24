@@ -1,0 +1,12 @@
+.report { max-width: 960px; }
+.report h1 { margin: 32px 0 20px; }
+.report h2 { font-family: Georgia, serif; font-size: 25px; margin: 38px 0 16px; font-weight: 500; }
+.report h3 { margin: 25px 0 12px; }
+.report p { line-height: 1.75; }
+.report table { display: block; overflow-x: auto; margin: 20px 0; font-size: 14px; }
+.report th, .report td { white-space: normal; text-align: left; vertical-align: top; min-width: 90px; }
+.report img { max-width: 100%; height: auto; }
+.report pre { overflow-x: auto; background: #eef2f4; padding: 18px; border-radius: 5px; font-size: 14px; }
+.equation { overflow-x: auto; text-align: center; margin: 24px 0; padding: 10px; }
+.equation img { min-height: 28px; max-width: none; max-height: 50px; }
+@media print { .report nav, .report footer { display: none; } .report { padding: 0; } }

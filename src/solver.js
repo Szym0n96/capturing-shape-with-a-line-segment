@@ -1,8 +1,11 @@
-import { EPSILON, checkInput, convexHull, minimumWidth, project, unproject, verifySegment } from './geometry.js';
+import { EPSILON, checkInput, convexHull, minimumWidth, normalizeAngle, project, unproject, verifySegment } from './geometry.js';
+import { smallestEnclosingCircle } from './circle.js';
+import { orientationEvents } from './events.js';
 
 export const OFFSET_TOLERANCE = 1e-4;
 
 export function feasibleOffsets(projected, radius) {
+  if (!projected.length) return null;
   let low = -Infinity, high = Infinity;
   for (const p of projected) {
     low = Math.max(low, p.y - radius);
@@ -67,7 +70,7 @@ function optimizeOffset(projected, radius, bounds, tolerance, stats) {
     }
   }
   best = bestOf(best, evaluate((low + high) / 2));
-  return { ...best, offsetBracket: high - low };
+  return best ? { ...best, offsetBracket: high - low, offsetConverged: high - low <= tolerance } : null;
 }
 
 export function solveFixedOrientation(points, radius, angle, tolerance = OFFSET_TOLERANCE) {
@@ -80,32 +83,67 @@ export function solveFixedOrientation(points, radius, angle, tolerance = OFFSET_
   return bounds ? toWorld(optimizeOffset(projected, radius, bounds, tolerance, null), angle) : null;
 }
 
-export function solve(points, radius, { method = 'optimized', angles = 180, offsets = 25 } = {}) {
+export function solveAtOffset(points, radius, angle, offset) {
   checkInput(points, radius);
-  if (!['grid', 'optimized'].includes(method)) throw new RangeError('Unknown method.');
+  if (!Number.isFinite(angle) || !Number.isFinite(offset)) throw new RangeError('Angle and offset must be finite.');
+  return toWorld(segmentOnLine(project(points, angle), radius, offset), angle);
+}
+
+export function solve(points, radius, { method = 'optimized', angles = 180, offsets = 25,
+  refinements = 6, offsetTolerance = OFFSET_TOLERANCE, trace = false,
+  useHull = method !== 'grid', detectPoint = true } = {}) {
+  checkInput(points, radius);
+  if (!['grid', 'optimized', 'events'].includes(method)) throw new RangeError('Unknown method.');
   if (!Number.isInteger(angles) || angles < 1 || !Number.isInteger(offsets) || offsets < 2) {
     throw new RangeError('Use at least one orientation and two offset samples.');
   }
+  if (!Number.isInteger(refinements) || refinements < 0 || refinements > 20 ||
+      !Number.isFinite(offsetTolerance) || offsetTolerance <= 0) {
+    throw new RangeError('Use 0–20 refinement rounds and a positive finite offset tolerance.');
+  }
   const started = performance.now();
   const hull = convexHull(points), width = minimumWidth(hull);
-  const stats = { evaluations: 0, diskTests: 0, orientations: 0 };
-  const finish = (status, segment = null) => ({ status, segment, hull, width, stats,
-    verification: segment ? verifySegment(points, segment, radius) : null,
-    elapsedMs: performance.now() - started });
+  const stats = { evaluations: 0, diskTests: 0, orientations: 0, feasibleOrientations: 0, circleChecks: 0 };
+  const eventData = method === 'events' || trace ? orientationEvents(hull, radius) : null;
+  let enclosingCircle = null;
+  const samples = new Map();
+  const finish = (status, segment = null) => {
+    const verification = segment ? verifySegment(points, segment, radius) : null;
+    if (verification && !verification.valid) { status = 'numerical-failure'; segment = null; }
+    const lowerBound = enclosingCircle ? Math.max(0, 2 * (enclosingCircle.radius - radius)) : 0;
+    return { status, segment, hull, width, stats, enclosingCircle, lowerBound,
+      gapToLowerBound: segment ? Math.max(0, segment.length - lowerBound) : null,
+      eventData, trace: trace ? [...samples.values()].sort((a, b) => a.angle - b.angle) : [],
+      verification, elapsedMs: performance.now() - started };
+  };
   if (!points.length) return finish('empty');
   if (width.width > 2 * radius + EPSILON) return finish('infeasible');
 
-  // The baseline uses all points. The improved method uses hull vertices.
-  const constraints = method === 'grid' ? points : hull;
+  // Shared preprocessing makes zero-length decisions independent of sampling.
+  if (detectPoint) {
+    enclosingCircle = smallestEnclosingCircle(hull);
+    stats.circleChecks = enclosingCircle.checks;
+    if (enclosingCircle.radius <= radius + EPSILON) {
+      const { center, support } = enclosingCircle;
+      return finish('point', { a: center, b: center, length: 0, angle: 0,
+        offset: center.y, start: center.x, end: center.x, active: support,
+        source: 'enclosing-circle' });
+    }
+  }
+
+  const constraints = useHull ? hull : points;
   const directions = Array.from({ length: angles }, (_, i) => i * Math.PI / angles);
   // Include a feasibility witness, so a narrow feasible angular interval
   // cannot be missed just because it falls between uniform samples.
-  if (method === 'optimized') directions.push(width.angle);
+  if (method !== 'grid') directions.push(width.angle);
   let best = null;
-  for (const angle of directions) {
+  const evaluate = inputAngle => {
+    const angle = normalizeAngle(inputAngle), key = angle.toPrecision(15);
+    if (samples.has(key)) return;
     stats.orientations++;
     const projected = project(constraints, angle), bounds = feasibleOffsets(projected, radius);
-    if (!bounds) continue;
+    if (!bounds) { samples.set(key, { angle, length: null }); return; }
+    stats.feasibleOrientations++;
     let candidate = null;
     if (method === 'grid') {
       for (let j = 0; j < offsets; j++) {
@@ -113,13 +151,33 @@ export function solve(points, radius, { method = 'optimized', angles = 180, offs
         candidate = bestOf(candidate, segmentOnLine(projected, radius, offset, stats));
       }
     } else {
-      candidate = optimizeOffset(projected, radius, bounds, OFFSET_TOLERANCE, stats);
+      candidate = optimizeOffset(projected, radius, bounds, offsetTolerance, stats);
     }
     best = bestOf(best, toWorld(candidate, angle));
+    samples.set(key, { angle, length: candidate?.length ?? null });
+  };
+  for (const angle of directions) evaluate(angle);
+
+  if (method === 'events') {
+    for (const event of eventData.events) evaluate(event.angle);
+    for (const [start, end] of eventData.feasibleIntervals) {
+      evaluate(start); evaluate(end); evaluate((start + end) / 2);
+    }
+    // Refine neighbourhoods of four promising samples, with periodic wrap.
+    // This is a numerical heuristic, not the paper's global exact sweep.
+    for (let round = 0; round < refinements; round++) {
+      const ordered = [...samples.values()].sort((a, b) => a.angle - b.angle);
+      const promising = ordered.filter(p => p.length !== null).sort((a, b) => a.length - b.length).slice(0, 4);
+      const next = [];
+      for (const p of promising) {
+        const i = ordered.indexOf(p), n = ordered.length;
+        const left = ordered[(i - 1 + n) % n].angle - (i === 0 ? Math.PI : 0);
+        const right = ordered[(i + 1) % n].angle + (i === n - 1 ? Math.PI : 0);
+        next.push((left + p.angle) / 2, (p.angle + right) / 2);
+      }
+      for (const angle of next) evaluate(angle);
+    }
   }
   if (!best) return finish('sample-miss');
-  const result = finish(best.length === 0 ? 'point' : 'candidate', best);
-  // Never display an invalid candidate as a successful result.
-  if (!result.verification.valid) { result.status = 'numerical-failure'; result.segment = null; }
-  return result;
+  return finish(best.length === 0 ? 'point' : 'candidate', best);
 }

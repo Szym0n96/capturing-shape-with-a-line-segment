@@ -1,73 +1,64 @@
 # Geometry and implementation notes
 
-This implementation explores the line-segment representation problem studied by van Beusekom et al. in their EuroCG 2024 extended abstract and their 2025 article in *Computing in Geometry and Topology*. The hull reduction and fixed-direction geometry come from §2–2.1 of the journal article, also discussed in §2 of the extended abstract. Full citations are in the [README](../README.md#references). The numerical search below is a simpler implementation choice, not the article's exact construction.
+The full analysis, study of the exact algorithms, and measured results are in the [web report](../report.html) and [PDF](report.pdf). This page is a compact reference for the code. The geometric reductions follow van Beusekom et al., journal §2–2.2 and the earlier EuroCG paper; see the [bibliography](../README.md#references).
 
-## 1. Hull reduction and feasibility
+## Reductions
 
-The radius-r neighbourhood of a segment is a capsule: the Minkowski sum of a segment and a disk. Both sets are convex, so the capsule is convex. If it contains every hull vertex, it contains their convex hull, hence all input points. It therefore suffices to solve the constraints on the hull (journal Lemma 1).
+A radius-r capsule is convex. Containing the convex-hull vertices therefore contains all original points. `convexHull` uses a monotone chain in O(n log n).
 
-Any feasible segment lies on a line whose distance from every point is at most r. The points must fit in a strip of width 2r. Conversely, a line through the middle of such a strip intersects every radius-r disk. Since there are finitely many disks, a finite segment on that line can meet them all. Thus a segment exists if and only if the hull's minimum width is at most 2r.
+A segment exists iff minimum width ≤ 2r: its supporting line requires a strip of this width; conversely the middle line of such a strip intersects all disks and a finite segment can meet all intersections. `minimumWidth` uses a monotone antipodal pointer in O(h). `minimumWidthBrute` is the O(h²) testing reference.
 
-For a convex polygon, a minimum-width strip has a support parallel to a hull edge. This implementation tries each edge and projects all h hull vertices onto its normal: O(h²), including a zero width for a point or a collinear hull. This is deliberately simpler than rotating calipers. Hull construction is O(n log n), not the output-sensitive hull construction in the paper.
+A point solution exists iff the smallest enclosing-circle radius R ≤ r. This is distinct from minimum width or diameter. `smallestEnclosingCircle` uses fixed-seed shuffled incremental boundary updates, with O(h³) worst-case work. All three searches share this check. The circle also gives the lower bound max(0, 2(R − r)): a length-L capsule fits inside a radius-(r + L/2) disk. The bound is evaluated numerically.
 
-Width is **not** a zero-length test. A zero-length answer requires a common intersection of all input disks. The numerical search detects such answers when its intervals overlap; it may return a small positive length when a zero-length solution is missed. For example, diameter at most 2r alone does not imply containment in a radius-r circle (consider an equilateral triangle of side 2r).
+## Fixed direction and line
 
-## 2. A fixed line
-
-Let `u = (cos θ, sin θ)` and `v = (-sin θ, cos θ)`. Write each point in this basis as `(xᵢ, yᵢ)`. A candidate line has points `t u + b v`, with offset b.
-
-All disks meet the line exactly when:
+For `u = (cos θ, sin θ)` and `v = (−sin θ, cos θ)`, project point i to `(x_i, y_i)`. The line is `t u + b v`. Its feasible offsets and disk intersections are:
 
 ```text
-maxᵢ(yᵢ − r) ≤ b ≤ minᵢ(yᵢ + r).
+max_i(y_i − r) ≤ b ≤ min_i(y_i + r)
+l_i(b) = x_i − sqrt(r² − (y_i − b)²)
+q_i(b) = x_i + sqrt(r² − (y_i − b)²)
+A(b) = max_i l_i(b), B(b) = min_i q_i(b)
+L(b) = max(0, A(b) − B(b))
 ```
 
-Each disk cuts out an interval `[lᵢ(b), qᵢ(b)]` on the line:
+If A > B, `[B, A]` is shortest: any feasible segment must start no later than B and end no earlier than A. Otherwise all intervals share `[A, B]`; return its midpoint. A line evaluation is O(h), or O(n) without hull reduction.
 
-```text
-lᵢ(b) = xᵢ − sqrt(r² − (yᵢ − b)²)
-qᵢ(b) = xᵢ + sqrt(r² − (yᵢ − b)²)
-A(b)  = maxᵢ lᵢ(b)
-B(b)  = minᵢ qᵢ(b)
-L(b)  = max(0, A(b) − B(b)).
-```
+Each left endpoint is convex in b, each right endpoint concave. Hence L is convex. `solveFixedOrientation` uses golden-section search, evaluates the strip endpoints explicitly and returns the shortest evaluated segment. Its default tolerance `1e-4` bounds the final offset bracket, with a cap of 96 iterations. `offsetBracket` and `offsetConverged` expose the stopping result. It does not bound length error near tangency, or error from angular sampling.
 
-If `A > B`, the segment `[B, A]` meets all intervals and is shortest: any solution must start no later than B and end no earlier than A. Otherwise every interval contains any point in `[A, B]`; the implementation returns its midpoint.
+The paper's exact O(h) fixed-direction solver builds circular-arc envelopes in hull order and locates equal-tangent or corner configurations. This implementation evaluates all intervals at each numerical step instead.
 
-## 3. Optimizing the offset
+## Direction search and events
 
-On the feasible strip, each `lᵢ` is convex and each `qᵢ` is concave. Therefore `A − B`, and then `max(0, A − B)`, are convex. Golden-section search can minimize this function even at corners or on a flat minimum. Both strip endpoints are evaluated explicitly, so a tangent line is retained.
+- `grid`: A uniform directions in `[0, π)`, B uniform offsets in each feasible strip, all input points.
+- `optimized`: the same A directions plus the minimum-width witness, hull constraints and numerical offset optimization.
+- `events`: every optimized direction, support-change directions, analytic roots of width = 2r, feasible-component endpoints/midpoints, then R local refinement rounds.
 
-The stopping condition is a final bracket width at most `1e-4`, with a defensive cap of 96 iterations. The returned candidate is the shortest among the evaluated offsets. This positional tolerance does not certify a length error, especially near tangency where square-root derivatives are unbounded. It also does not bound the error from sampling angles.
+Hull-edge directions partition the angle domain into sectors with fixed opposing supports. Their displacement `(dx, dy)` gives `width(θ) = dy cos θ − dx sin θ`. The code solves this equation for width = 2r within each sector. Support pointers advance monotonically. Sorting costs O(h log h), followed by O(h) traversal. Closed feasible intervals retain isolated tangent directions and both sides of the periodic seam.
 
-The paper constructs and searches circular-arc envelopes exactly in O(h) for a fixed direction. This prototype evaluates the full collection of intervals at every numerical step instead.
+In each local refinement round, the four shortest sampled candidates contribute the midpoint directions to their current neighbours, with periodic wraparound. At most eight new directions are evaluated. Retaining all candidates makes refinement monotone, but this heuristic is not a globally exact search. These support/feasibility events correspond to journal types 4 and 3; the full type-1/type-2 event processing and balanced disk-intersection tree are studied only in the report.
 
-## 4. Global sampling and actual cost
+## Actual cost
 
-Let A be the number of angles, B the number of offset samples, and K the number of numerical offset iterations (normally O(log(2r/τ)) for tolerance τ).
+Let C(h) be the circle cost (worst-case O(h³)), K the numerical offset iteration count, and M = O(A + h + R) the total directions for the event method. Usually K = O(log(2r/τ)), capped at 96.
 
-| Method | Work including preprocessing |
+| Method | Time including preprocessing and verification |
 | --- | --- |
-| Uniform grid, all n points | O(n log n + h² + A B n) |
-| Hull + optimized offset | O(n log n + h² + (A + 1) h (K + 1)) |
+| Uniform grid | O(n log n + C(h) + ABn) |
+| Hull + optimized offset | O(n log n + C(h) + (A + 1)h(K + 1)) |
+| Events + refinement | O(n log n + C(h) + h log h + Mh(K + 1) + RM log M) |
 
-The baseline uses angles `iπ/A` and B equally spaced offsets within each feasible strip. The improved method uses the same uniform angles, plus the minimum-width direction to avoid missing all feasible orientations in a narrow interval. This extra direction and hull reduction are part of the comparison; it does not isolate offset optimization alone. Auxiliary memory is O(n + A).
+The last term accounts for sorting candidates each refinement round. Auxiliary memory is O(n + M). These are not the paper's bounds. Disk-test counters count disk–line interval evaluations only; timings include preprocessing and final verification.
 
-Neither method implements the global event processing of the paper or its proven approximation scheme. No multiplicative approximation ratio is claimed. The rotation animation simply reruns the numerical fixed-direction solver.
+## Numerical contract
 
-## 5. Validation and limitations
+`solve` independently verifies every returned segment against all original points, using clamped orthogonal projection. A failed check returns `numerical-failure` and hides the segment. The UI also checks fixed-direction candidates.
 
-Every global candidate is checked against **all original points**, using clamped orthogonal projection onto the segment. This distance routine is independent of the disk-interval calculation. The displayed fixed-direction candidate receives the same check.
+- Coordinates and radius must be finite, with r > 0. The UI/import bounds are 900 × 560 units, at most 100 points and radius 1–200.
+- Distance/width comparisons allow `1e-7` units. Width above `2r + 1e-7` yields `infeasible`; an angular miss yields `sample-miss`.
+- Tiny negative disk radicands are clamped only after checking the distance tolerance. Circle containment uses a scale-aware machine-precision allowance.
+- Event angles within `1e-12` radians are merged. Near-threshold distinctions are numerical.
+- Hull orientation uses the ordinary cross product; exact/adaptive predicates are not implemented. Extreme coordinate magnitudes and near-degeneracies remain limitations.
+- No multiplicative approximation ratio or certified positive-length global optimum is claimed. Dense reference comparisons in the experiments are empirical, not error certificates.
 
-- Radius must be positive and all coordinates finite. The UI uses at most 100 points in a 900 × 560 drawing.
-- Calculations use JavaScript double precision. Distance comparisons allow `1e-7` units; near-tangent radicands are clamped to zero only after checking this tolerance.
-- Hull orientation uses the ordinary cross product, without adaptive exact predicates. Extremely large coordinates or nearly collinear data are outside this prototype's robustness guarantees.
-- Width above `2r + 1e-7` yields `infeasible`. A failed angular sample yields `sample-miss`, never a proof. Candidates failing distance validation are hidden and reported as numerical failures.
-- No exact minimum enclosing circle routine is implemented. Detecting all zero-length cases remains future work.
-- Data is kept in memory only; the page is not designed for large datasets or persistent editing.
-
-## 6. Initial measurements
-
-`benchmark.csv` was generated on 10 November 2026 with Node.js 18.19.1, Linux x64, by `node scripts/benchmark.js`. Each row reports the median of five runs after one warm-up, using 180 angles and 25 baseline offsets. Times include hull construction, width computation and validation. Disk-test counts measure just the interval evaluations.
-
-The seeded instances show a substantial reduction in disk tests when n is larger than h, with similar or slightly shorter candidate lengths. Small cases may run slower with numerical offset search; timing differences below a millisecond should not be overinterpreted. These are preliminary examples, not a broad performance evaluation. Compare lengths and operation counts before drawing conclusions from timings.
+See `tests/` for analytic, independent-reference, random and degenerate checks. Full measured data and settings are in [experiments/](experiments/).
