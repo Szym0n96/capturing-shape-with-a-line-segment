@@ -2,7 +2,7 @@
 
 An interactive JavaScript/SVG exploration of short line segments representing planar point sets, based on two papers by van Beusekom et al. Given a radius `r > 0`, find a short segment within distance `r` of every input point. Its neighbourhood forms a capsule.
 
-**[Interactive demo](https://szym0n96.github.io/capturing-shape-with-a-line-segment/)** · **[Technical report](report.html)** · **[Report PDF](docs/report.pdf)**
+**[Interactive demo](https://szym0n96.github.io/capturing-shape-with-a-line-segment/)** · **[Technical report](report.html)** · **[Report PDF](docs/report.pdf)** · **[Public source repository](https://github.com/Szym0n96/capturing-shape-with-a-line-segment)**
 
 The three methods are numerical searches. The full exact global algorithm from the journal article is explained in the report and remains an extension; positive-length results are feasible candidates, not certified global optima.
 
@@ -116,7 +116,14 @@ The files are written to `../releases/`, outside the repository. The archive inc
 
 Use **this directory as the Git repository root**. The existing GitHub Pages deployment can continue serving the `main` branch's root: `index.html`, `report.html`, `docs/` and `src/` all use relative local paths. No publishing workflow or build service is required.
 
+## Contributions and AI assistance
+
+This is an individual project by **Szymon Januszewski**, who wrote the majority of the code and the initial summarized documentation. **OpenAI Codex** helped identify and correct errors in the code, improve its clarity, and document it more thoroughly. It also expanded and structured the documentation from the author's initial draft. The author remains responsible for the submission.
+
+The [contribution and AI-use statement](https://szym0n96.github.io/capturing-shape-with-a-line-segment/report.html#contributions-and-ai-use) is included in Section 9 of the HTML/PDF report and its [source](docs/report.md).
+
 ## References
 
 - N. van Beusekom, M. van Kreveld, M. van Mulken, M. Roeloffzen, B. Speckmann and J. Wulms. **Capturing the Shape of a Point Set With a Line Segment.** *Computing in Geometry and Topology* 4(1), Article 10, pp. 10:1–10:35, 2025. [DOI](https://doi.org/10.57717/cgt.v4i1.74). Exact bound: O(n log h + h log³ h).
-- The same authors. **Capturing the Shape of a Point Set with a Line Segment.** EuroCG 2024 extended abstract, pp. 38:1–38:8. Earlier bound: O(n log h + h²). [Related full version on arXiv](https://arxiv.org/abs/2402.12285).
+- N. van Beusekom, M. van Kreveld, M. van Mulken, M. Roeloffzen, B. Speckmann and J. Wulms. **Capturing the Shape of a Point Set with a Line Segment.** 40th European Workshop on Computational Geometry (EuroCG 2024), Ioannina, Greece, 13–15 March 2024, extended abstract, pp. 38:1–38:8. Earlier bound: O(n log h + h²). [Workshop PDF](https://eurocg2024.math.uoi.gr/data/uploads/paper_38.pdf).
+- M. de Berg, O. Cheong, M. van Kreveld and M. Overmars. **Computational Geometry: Algorithms and Applications.** 3rd edition, Springer, 2008, Chapter 1. [DOI](https://doi.org/10.1007/978-3-540-77974-2).

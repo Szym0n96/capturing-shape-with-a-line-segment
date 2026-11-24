@@ -22,7 +22,7 @@ The scope is small planar datasets in ordinary floating-point coordinates. The b
 
 The capsule is a Minkowski sum of a segment and a disk. Both are convex, so the capsule is convex. If all hull vertices lie inside it, every convex combination of those vertices also lies inside it. Thus it contains the whole convex hull and every original point. The converse is immediate because hull vertices are input points. This is the reduction in journal Lemma 1 [1].
 
-The implementation uses Andrew's monotone chain, sorts lexicographically, removes duplicates and keeps only the endpoints of collinear runs. Its cost is O(n log n); it does not use the output-sensitive O(n log h) hull algorithm assumed in the published bound. The original points remain available for independent verification.
+The implementation uses Andrew's monotone chain, sorts lexicographically, removes duplicates and keeps only the endpoints of collinear runs. Its cost is O(n log n); it does not use the output-sensitive O(n log h) hull algorithm assumed in the published bound. The original points remain available for independent verification. For the standard convex-hull background and the sorted incremental scan, see de Berg et al. [3, Chapter 1].
 
 ### 2.2 Feasibility through minimum width
 
@@ -107,9 +107,11 @@ In journal §2.2, the two feasible-strip boundaries, the relevant circular-arc e
 
 Simultaneous events are handled in descending type order, 4, 3, 2, then 1. This avoids using an obsolete support configuration when a lower-type event is processed. The difficult part is anticipating envelope changes, including vertices not currently exposed on the active strip.
 
-The journal data structure uses a balanced binary tree over the cyclic hull order. Each node stores the boundary of the intersection of disks belonging to its subtree. A contiguous range of hull vertices is decomposed into O(log h) canonical subtrees. Suitable circular-ray or line intersection queries on their stored boundaries take O(log² h) in total. These queries expose the next relevant intersection without reconstructing a full envelope after every event.
+Journal §§2.3–2.4 [1] describe the range-query structure used to anticipate envelope changes. Section 2.4 first partitions the cyclic hull into maximal subsequences whose total turning angle is at most π/2 and whose first and last vertices are at distance at most r. These conditions ensure a non-empty common intersection of the radius-r disks in each subsequence. A balanced binary tree is built for each subsequence; each node stores the ordered boundary arcs of the intersection of its descendant disks. The complete structure is a collection of these trees, occupying O(h log h) space.
 
-The dominant type-2b family contributes O(h log h) events at O(log² h) each; the other types fit within this bound. Including the output-sensitive hull construction yields O(n log h + h log³ h), journal Theorem 5. The O(h²) sweep term in the shorter EuroCG article is an earlier result, not the bound of the final journal data structure. This implementation includes neither that tree nor the full type-1/type-2 event scheduler.
+The relevant queries are restricted to ranges of diameter at most 2r and visit only O(1) of these subsequences. Within a tree, a contiguous range decomposes into O(log h) canonical subtrees, with an O(log h) boundary search in each. This gives O(log² h) query time for the required circular-ray or line intersections. The partition and query restrictions matter: a single unrestricted tree over all hull vertices could have empty disk intersections. These queries expose the next relevant intersection without reconstructing a full envelope after every event.
+
+The dominant type-2b family contributes O(h log h) events at O(log² h) each; the other types fit within this bound. Including the output-sensitive hull construction yields O(n log h + h log³ h), journal Theorem 5. The O(h²) sweep term in the shorter EuroCG article is an earlier result, not the bound of the final journal data structure. This implementation includes neither that range-query structure nor the full type-1/type-2 event scheduler.
 
 ### 4.2 Implemented support and feasibility events
 
@@ -221,8 +223,16 @@ The geometric reductions produce a small, inspectable solver: feasibility is sep
 
 The main remaining algorithmic step is the exact circular-arc sweep, including type-1/type-2 events and the journal's range-query data structure. A separate numerical improvement would be adaptive refinement with certified interval bounds, rather than selecting only four promising samples. Robust orientation predicates and certified circle/angle computations would be needed for guarantees outside the current floating-point scope. These extensions are deliberately distinguished from the working numerical implementation.
 
+## 9. Contributions and AI use
+
+This is an individual project by **Szymon Januszewski**. I wrote the majority of the code and an initial, summarized documentation. I used **OpenAI Codex** to help identify and correct errors in the code, improve its clarity, and document it more thoroughly. Codex also expanded and structured the documentation from my initial draft. I remain responsible for the submitted project and its explanation; the underlying published geometric results are attributed to their authors in the references.
+
+The [public source repository](https://github.com/Szym0n96/capturing-shape-with-a-line-segment) contains the code, tests, report source and recorded experiments. The [project webpage](https://szym0n96.github.io/capturing-shape-with-a-line-segment/) provides the demonstration and this report.
+
 ## References
 
-1. N. van Beusekom, M. van Kreveld, M. van Mulken, M. Roeloffzen, B. Speckmann and J. Wulms. **Capturing the Shape of a Point Set With a Line Segment.** Computing in Geometry and Topology, 4(1), Article 10, pp. 10:1–10:35, 2025. [doi:10.57717/cgt.v4i1.74](https://doi.org/10.57717/cgt.v4i1.74). Sections 2–2.2 and Theorem 5 are the basis for the exact-algorithm discussion.
+1. N. van Beusekom, M. van Kreveld, M. van Mulken, M. Roeloffzen, B. Speckmann and J. Wulms. **Capturing the Shape of a Point Set With a Line Segment.** Computing in Geometry and Topology, 4(1), Article 10, pp. 10:1–10:35, 2025. [doi:10.57717/cgt.v4i1.74](https://doi.org/10.57717/cgt.v4i1.74). Sections 2–2.4 and Theorem 5 are the basis for the exact-algorithm discussion.
 
-2. The same authors. **Capturing the Shape of a Point Set with a Line Segment.** EuroCG 2024 extended abstract, pp. 38:1–38:8. The supplied eight-page version gives the earlier quadratic sweep bound. [Related full version on arXiv](https://arxiv.org/abs/2402.12285).
+2. N. van Beusekom, M. van Kreveld, M. van Mulken, M. Roeloffzen, B. Speckmann and J. Wulms. **Capturing the Shape of a Point Set with a Line Segment.** 40th European Workshop on Computational Geometry (EuroCG 2024), Ioannina, Greece, 13–15 March 2024, extended abstract, pp. 38:1–38:8. This version gives the earlier quadratic sweep bound. [Workshop PDF](https://eurocg2024.math.uoi.gr/data/uploads/paper_38.pdf).
+
+3. M. de Berg, O. Cheong, M. van Kreveld and M. Overmars. **Computational Geometry: Algorithms and Applications.** 3rd edition, Springer, 2008. Chapter 1 provides the convex-hull background. [doi:10.1007/978-3-540-77974-2](https://doi.org/10.1007/978-3-540-77974-2).

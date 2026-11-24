@@ -9,7 +9,7 @@ version = json.loads((root / 'package.json').read_text())['version']
 destination = root.parent / 'releases'
 destination.mkdir(exist_ok=True)
 archive = destination / f'{root.name}-{version}.zip'
-top_files = ['.gitignore', 'README.md', 'package.json', 'index.html', 'styles.css', 'report.html']
+top_files = ['.gitignore', '.nojekyll', 'README.md', 'package.json', 'index.html', 'styles.css', 'report.html']
 files = [root / name for name in top_files]
 for directory in ['src', 'tests', 'scripts', 'docs']:
     files.extend(path for path in (root / directory).rglob('*') if path.is_file()

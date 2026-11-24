@@ -64,7 +64,9 @@ if re.search(r'\{\{\w+\}\}', source):
     raise ValueError('Unresolved report field')
 md = MarkdownIt('commonmark', {'html': False}).enable('table')
 tokens = md.parse(source)
-for token in tokens:
+for index, token in enumerate(tokens):
+    if token.type == 'heading_open' and tokens[index + 1].content == '9. Contributions and AI use':
+        token.attrSet('id', 'contributions-and-ai-use')
     for child in token.children or []:
         if child.type == 'image' and child.attrGet('src').startswith('figures/'):
             child.attrSet('src', 'docs/' + child.attrGet('src'))
@@ -87,7 +89,7 @@ page = f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Geometry, algorithms, validation and reproducible experiments for line-segment shape capture.">
 <title>Technical report · Capturing a Shape with a Line Segment</title><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="docs/report.css"></head>
-<body class="report"><nav aria-label="Report navigation"><a href="index.html">← Interactive demo</a><a href="docs/report.pdf">Download PDF</a><a href="docs/experiments/metadata.json">Experiment metadata</a><a href="docs/report.md">Report source</a></nav>
+<body class="report"><nav aria-label="Report navigation"><a href="index.html">← Interactive demo</a><a href="docs/report.pdf">Download PDF</a><a href="docs/experiments/metadata.json">Experiment metadata</a><a href="docs/report.md">Report source</a><a href="https://github.com/Szym0n96/capturing-shape-with-a-line-segment">Source code — GitHub</a><a href="#contributions-and-ai-use">Contributions & AI use</a></nav>
 <main>{body}</main><footer>Szymon Januszewski · Capturing a Shape with a Line Segment</footer></body></html>'''
 (root / 'report.html').write_text(page)
 
